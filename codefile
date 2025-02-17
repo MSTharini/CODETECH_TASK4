@@ -1,0 +1,96 @@
+# Importing TensorFlow and necessary layers from tf.keras
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Dropout, Embedding
+from tensorflow.keras.optimizers import Adam
+from transformers import GPT2LMHeadModel, GPT2Tokenizer
+# Importing Libraries
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Dropout, Embedding
+from tensorflow.keras.optimizers import Adam
+from transformers import GPT2LMHeadModel, GPT2Tokenizer
+
+# ------------------ GPT-2 Text Generation -------------------
+
+# Function to generate text using GPT-2
+def generate_text_gpt2(prompt, max_length=150):
+    model_name = "gpt2"  # You can use "gpt2-medium" or "gpt2-large" for larger models
+    model = GPT2LMHeadModel.from_pretrained(model_name)
+    tokenizer = GPT2Tokenizer.from_pretrained(model_name)
+
+    # Encode the user prompt
+    inputs = tokenizer.encode(prompt, return_tensors="pt")
+    
+    # Generate text
+    outputs = model.generate(inputs, max_length=max_length, num_return_sequences=1, no_repeat_ngram_size=2, temperature=0.7)
+    
+    # Decode and return the generated text
+    generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    return generated_text
+
+
+# ------------------- LSTM Text Generation -------------------
+
+# Prepare data for LSTM
+def prepare_data_lstm(text, seq_length=100):
+    tokenizer = tf.keras.preprocessing.text.Tokenizer(char_level=False)
+    tokenizer.fit_on_texts([text])
+    total_words = len(tokenizer.word_index) + 1
+
+    sequences = []
+    for i in range(seq_length, len(text.split())):
+        seq = text.split()[i-seq_length:i+1]
+        sequences.append([tokenizer.word_index[word] for word in seq])
+
+    return np.array(sequences), total_words, tokenizer
+
+# Function to build and train the LSTM model
+def build_lstm_model(total_words, seq_length=100):
+    model = Sequential()
+    model.add(Embedding(total_words, 100, input_length=seq_length-1))
+    model.add(LSTM(100, return_sequences=True))
+    model.add(Dropout(0.2))
+    model.add(LSTM(100))
+    model.add(Dense(total_words, activation='softmax'))
+
+    model.compile(loss='sparse_categorical_crossentropy', optimizer=Adam(learning_rate=0.001))
+    return model
+
+# Function to generate text using LSTM
+def generate_text_lstm(model, tokenizer, seq_length, seed_text, num_words=50):
+    result = seed_text
+    for _ in range(num_words):
+        tokenized_input = tokenizer.texts_to_sequences([seed_text])[0]
+        tokenized_input = np.pad(tokenized_input, (seq_length-len(tokenized_input), 0), 'constant')
+        prediction = model.predict(np.array([tokenized_input]), verbose=0)
+        predicted_word = tokenizer.index_word[np.argmax(prediction)]
+        seed_text += " " + predicted_word
+    return result
+
+
+# -------------------- Example Usage ------------------------
+
+# GPT-2 Text Generation
+prompt = "Artificial Intelligence in healthcare is transforming"
+generated_text_gpt2 = generate_text_gpt2(prompt, max_length=200)
+print("Generated Text from GPT-2:")
+print(generated_text_gpt2)
+
+# LSTM Text Generation
+text = """Artificial Intelligence is changing the landscape of industries across the world. 
+It is transforming the way businesses operate and how individuals live their lives. 
+From healthcare to education, artificial intelligence has revolutionized the way tasks are carried out."""
+seq_length = 10  # Length of the input sequence for LSTM
+sequences, total_words, tokenizer = prepare_data_lstm(text, seq_length)
+
+# Train the LSTM model (this will need a few epochs to complete)
+lstm_model = build_lstm_model(total_words, seq_length)
+lstm_model.fit(sequences[:,:-1], sequences[:,-1], epochs=30, batch_size=64)
+
+# Generate text using LSTM
+seed_text = "Artificial Intelligence is"
+generated_text_lstm = generate_text_lstm(lstm_model, tokenizer, seq_length, seed_text, num_words=50)
+print("\nGenerated Text from LSTM:")
+print(generated_text_lstm)
